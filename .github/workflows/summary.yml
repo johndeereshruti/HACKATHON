@@ -1,8 +1,6 @@
 name: Summarize new issues
 
 on:
-  issues:
-    types: []
   issue_comment:
     types: [created]
 
@@ -20,12 +18,11 @@ jobs:
       - name: Check if slash command
         id: check
         run: |
-          BODY="${{ github.event.issue.body }}"
           COMMENT="${{ github.event.comment.body }}"
-          if [[ "$BODY" == */summarize/files* ]] || [[ "$COMMENT" == */summarize/files* ]]; then
+          if [[ "$COMMENT" == */summarize/files* ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "include_files=true" >> $GITHUB_OUTPUT
-          elif [[ "$BODY" == */summarize* ]] || [[ "$COMMENT" == */summarize* ]]; then
+          elif [[ "$COMMENT" == */summarize* ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "include_files=false" >> $GITHUB_OUTPUT
           else
