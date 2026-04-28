@@ -28,7 +28,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.check.outputs.should_run == 'true'
-        uses: actions/checkout@v4.2.0
+        uses: actions/checkout@v4
 
       - name: Fetch all issue comments
         if: steps.check.outputs.should_run == 'true'
