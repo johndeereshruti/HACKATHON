@@ -120,9 +120,9 @@ jobs:
       - name: Comment with AI summary and file suggestions
         if: steps.check.outputs.should_run == 'true'
         run: |
-          gh issue comment $ISSUE_NUMBER --body "## AI Summary
-
-
+          printf '## AI Summary\n\n%s\n\n## Suggested Files to Modify\n\n%s\n' \
+            "$RESPONSE" "$FILE_SUGGESTIONS" > /tmp/comment_body.txt
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment_body.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
