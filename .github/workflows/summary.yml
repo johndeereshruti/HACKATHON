@@ -55,80 +55,11 @@ jobs:
             Comments:
             ${{ steps.fetch_comments.outputs.comments }}
 
-      - name: Get repository file structure
-        if: steps.check.outputs.should_run == 'true'
-        id: get_files
-        run: |
-          # Get all files in the repository (excluding common non-essential directories)
-          FILES=$(find . -type f \
-            -not -path '*/\.*' \
-            -not -path '*node_modules*' \
-            -not -path '*\.git*' \
-            -not -path '*/build/*' \
-            -not -path '*/dist/*' \
-            -not -path '*/\.github/workflows/*' \
-            | head -50 | sed 's|^\./||' | sort | sed 's/^/- /')
-          
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$FILES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Get file descriptions
-        if: steps.check.outputs.should_run == 'true'
-        id: file_descriptions
-        run: |
-          # Create a brief description of each file
-          FILES_WITH_DESC=$(find . -type f \
-            -not -path '*/\.*' \
-            -not -path '*node_modules*' \
-            -not -path '*\.git*' \
-            -not -path '*/build/*' \
-            -not -path '*/dist/*' \
-            -not -path '*/\.github/workflows/*' \
-            | head -50 | while read file; do
-              lines=$(wc -l < "$file" 2>/dev/null || echo "0")
-              echo "- ${file#./}: ($lines lines)"
-            done | sort)
-          
-          echo "file_descriptions<<EOF" >> $GITHUB_OUTPUT
-          echo "$FILES_WITH_DESC" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Analyze which files to modify
-        if: steps.check.outputs.should_run == 'true'
-        id: file_analysis
-        uses: actions/ai-inference@v1
-        with:
-          prompt: |
-            Based on the following issue summary and repository files, suggest which files could be altered to address the issue.
-            
-            ISSUE SUMMARY:
-            ${{ steps.inference.outputs.response }}
-            
-            REPOSITORY FILES (with line counts):
-            ${{ steps.file_descriptions.outputs.file_descriptions }}
-            
-            Analyze the issue and suggest 3-5 specific files that could be modified to address it. For each file, briefly explain:
-            1. The filename
-            2. Why it should be modified
-            3. What kind of changes might be needed
-            
-            Format your response as a numbered list with clear sections.
-
-      - name: Comment with AI summary and file suggestions
+      - name: Comment with AI summary
         if: steps.check.outputs.should_run == 'true'
         run: |
-          gh issue comment $ISSUE_NUMBER --body "## AI Summary
-
-$RESPONSE
-
----
-
-## Suggested Files to Modify
-
-$FILE_SUGGESTIONS"
+          gh issue comment $ISSUE_NUMBER --body "## AI Summary\n\n$RESPONSE"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           RESPONSE: ${{ steps.inference.outputs.response }}
-          FILE_SUGGESTIONS: ${{ steps.file_analysis.outputs.response }}
