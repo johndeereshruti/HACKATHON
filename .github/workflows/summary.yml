@@ -28,13 +28,12 @@ jobs:
         if: steps.check.outputs.should_run == 'true'
         uses: actions/checkout@v4
 
-      - name: Fetch all issue comments with images
+      - name: Fetch all issue comments
         if: steps.check.outputs.should_run == 'true'
         id: fetch_comments
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
-          COMMENTS=$(gh api repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments \
-            --jq '.[] | "\(.body)\n" + (if test("![\\w\\s-]*\\([^)]+\\)") then "Images found in comment" else "" end)' | sed 's/^/- /')
+          COMMENTS=$(gh api repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments --jq '.[].body' | sed 's/^/- /')
           echo "comments<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMENTS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -53,7 +52,7 @@ jobs:
             Title: ${{ github.event.issue.title }}
             Body: ${{ github.event.issue.body }}
             
-            Comments (including image references):
+            Comments:
             ${{ steps.fetch_comments.outputs.comments }}
 
       - name: Comment with AI summary
