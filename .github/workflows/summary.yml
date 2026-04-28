@@ -108,7 +108,7 @@ jobs:
         with:
           max-completion-tokens: 1200
           prompt: |
-           Based on the following issue summary and repository files, suggest which files could be altered to address the issue.
+            Based on the following issue summary and repository files, suggest which files could be altered to address the issue.
             
             ISSUE SUMMARY:
             ${{ steps.inference.outputs.response }}
@@ -122,12 +122,6 @@ jobs:
             3. What kind of changes might be needed
             
             Format your response as a numbered list with clear sections.
-
-            Rules:
-            - If no relevant files can be inferred, output exactly:
-              Could not find relevant files.
-            - End with this exact reminder line:
-              Please review these suggestions carefully; they are AI-generated and may be inaccurate.
 
       - name: Comment with AI summary only
         if: steps.check.outputs.should_run == 'true' && steps.check.outputs.include_files == 'false'
