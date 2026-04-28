@@ -116,7 +116,7 @@ jobs:
             REPOSITORY FILES (with line counts):
             ${{ steps.file_descriptions.outputs.file_descriptions }}
             
-            Analyze the issue and suggest 3-5 specific files that could be modified to address it. For each file, briefly explain:
+            Analyze the issue and suggest files that could be modified to address it. For each file, briefly explain:
             1. The filename
             2. Why it should be modified
             3. What kind of changes might be needed
