@@ -33,21 +33,50 @@ jobs:
           });
 
           const top = prs.slice(0, 20);
-          const prLines = top.length
-            ? top.map((pr) => `- #${pr.number}: ${pr.title} by ${pr.user.login} (${pr.html_url})`)
-            : ['- No open PRs right now.'];
+          const cardBody = [
+            {
+              type: 'TextBlock',
+              text: `PR report for ${owner}/${repo}`,
+              weight: 'Bolder',
+              size: 'Medium'
+            },
+            {
+              type: 'TextBlock',
+              text: `Open PR count: ${prs.length}`,
+              wrap: true,
+              spacing: 'Small'
+            }
+          ];
 
-          const text = [
-            `PR report for ${owner}/${repo}`,
-            `Open PR count: ${prs.length}`,
-            '',
-            ...prLines
-          ].join('\n');
+          if (top.length === 0) {
+            cardBody.push({
+              type: 'TextBlock',
+              text: 'No open PRs right now.',
+              wrap: true,
+              spacing: 'Medium'
+            });
+          } else {
+            top.forEach((pr) => {
+              cardBody.push({
+                type: 'TextBlock',
+                text: `[#${pr.number}](${pr.html_url}) ${pr.title} - ${pr.user.login}`,
+                wrap: true,
+                spacing: 'Small'
+              });
+            });
+          }
+
+          const adaptiveCard = {
+            type: 'AdaptiveCard',
+            $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+            version: '1.4',
+            body: cardBody
+          };
 
           const response = await fetch(webhook, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
+            body: JSON.stringify(adaptiveCard)
           });
 
           if (!response.ok) {
