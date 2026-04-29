@@ -62,11 +62,11 @@ jobs:
             Comments:
             ${{ steps.fetch_comments.outputs.comments }}
 
-      - name: Get repository file structure
+      - name: Build file content context
         if: steps.check.outputs.include_files == 'true'
-        id: get_files
+        id: file_context
         run: |
-          # Get all files in the repository (excluding common non-essential directories)
+          # Build compact, text-based snippets so suggestions are based on content, not filename.
           FILES=$(find . -type f \
             -not -path '*/\.*' \
             -not -path '*node_modules*' \
@@ -74,32 +74,22 @@ jobs:
             -not -path '*/build/*' \
             -not -path '*/dist/*' \
             -not -path '*/\.github/workflows/*' \
-            | head -50 | sed 's|^\./||' | sort | sed 's/^/- /')
-          
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$FILES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            | sort | head -30)
 
-      - name: Get file descriptions
-        if: steps.check.outputs.include_files == 'true'
-        id: file_descriptions
-        run: |
-          # Create a brief description of each file
-          FILES_WITH_DESC=$(find . -type f \
-            -not -path '*/\.*' \
-            -not -path '*node_modules*' \
-            -not -path '*\.git*' \
-            -not -path '*/build/*' \
-            -not -path '*/dist/*' \
-            -not -path '*/\.github/workflows/*' \
-            | head -50 | while read file; do
+          {
+            echo "file_context<<EOF"
+            while IFS= read -r file; do
+              if file --mime "$file" | grep -q 'charset=binary'; then
+                continue
+              fi
+
               lines=$(wc -l < "$file" 2>/dev/null || echo "0")
-              echo "- ${file#./}: ($lines lines)"
-            done | sort)
-          
-          echo "file_descriptions<<EOF" >> $GITHUB_OUTPUT
-          echo "$FILES_WITH_DESC" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+              echo "### ${file#./} ($lines lines)"
+              sed -n '1,20p' "$file" | cut -c1-180 | sed 's/^/| /'
+              echo
+            done <<< "$FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Analyze which files to modify
         if: steps.check.outputs.include_files == 'true'
@@ -108,15 +98,16 @@ jobs:
         with:
           max-completion-tokens: 1200
           prompt: |
-            Based on the following issue summary and repository files, suggest which files could be altered to address the issue.
+            Based on the issue summary and file content snippets below, suggest which files could be altered to address the issue.
             
             ISSUE SUMMARY:
             ${{ steps.inference.outputs.response }}
             
-            REPOSITORY FILES (with line counts):
-            ${{ steps.file_descriptions.outputs.file_descriptions }}
+            FILE CONTENT SNIPPETS:
+            ${{ steps.file_context.outputs.file_context }}
             
-            Analyze the issue and suggest files that could be modified to address it. For each file, briefly explain:
+            Analyze semantic relevance between the issue and the code content. Do not rely on filename similarity.
+            Suggest files that could be modified to address the issue. For each file, briefly explain:
             1. The filename
             2. Why it should be modified
             3. What kind of changes might be needed
