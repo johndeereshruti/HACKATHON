@@ -3,7 +3,7 @@ name: Send PR info to Teams
 
 on:
   schedule:
-  - cron: '50 14 * * *'
+  - cron: '26 09 * * *'
 
 jobs:
   pr-report:
