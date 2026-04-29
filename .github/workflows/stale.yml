@@ -2,8 +2,7 @@
 name: Send PR info to Teams
 
 on:
-  schedule:
-  - cron: '26 09 * * *'
+  workflow_dispatch:
 
 jobs:
   pr-report:
