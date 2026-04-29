@@ -114,6 +114,9 @@ jobs:
             
             Format your response as a numbered list with clear sections.
 
+            Rules:
+            - Only suggest files that are relevant to the issue summary.
+
       - name: Comment with AI summary only
         if: steps.check.outputs.should_run == 'true' && steps.check.outputs.include_files == 'false'
         run: |
