@@ -1,12 +1,17 @@
-name: Summarize new issues
+name: Summarize issue
 
 on:
   issue_comment:
     types: [created]
+  issues:
+    types: [labeled]
 
 jobs:
   summary:
     runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/summarize')) ||
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'summarize')
     permissions:
       issues: write
       models: read
@@ -15,27 +20,10 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Check if slash command
-        id: check
-        run: |
-          COMMENT="${{ github.event.comment.body }}"
-          if [[ "$COMMENT" == */summarize/files* ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "include_files=true" >> $GITHUB_OUTPUT
-          elif [[ "$COMMENT" == */summarize* ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "include_files=false" >> $GITHUB_OUTPUT
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "include_files=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Checkout repository
-        if: steps.check.outputs.should_run == 'true'
         uses: actions/checkout@v6
 
       - name: Fetch all issue comments
-        if: steps.check.outputs.should_run == 'true'
         id: fetch_comments
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
@@ -47,7 +35,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run AI inference
-        if: steps.check.outputs.should_run == 'true'
         id: inference
         uses: actions/ai-inference@v2
         with:
@@ -62,63 +49,7 @@ jobs:
             Comments:
             ${{ steps.fetch_comments.outputs.comments }}
 
-      - name: Build file content context
-        if: steps.check.outputs.include_files == 'true'
-        id: file_context
-        run: |
-          # Build compact, text-based snippets so suggestions are based on content, not filename.
-          FILES=$(find . -type f \
-            -not -path '*/\.*' \
-            -not -path '*node_modules*' \
-            -not -path '*\.git*' \
-            -not -path '*/build/*' \
-            -not -path '*/dist/*' \
-            -not -path '*/\.github/workflows/*' \
-            | sort | head -30)
-
-          {
-            echo "file_context<<EOF"
-            while IFS= read -r file; do
-              if file --mime "$file" | grep -q 'charset=binary'; then
-                continue
-              fi
-
-              lines=$(wc -l < "$file" 2>/dev/null || echo "0")
-              echo "### ${file#./} ($lines lines)"
-              sed -n '1,20p' "$file" | cut -c1-180 | sed 's/^/| /'
-              echo
-            done <<< "$FILES"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Analyze which files to modify
-        if: steps.check.outputs.include_files == 'true'
-        id: file_analysis
-        uses: actions/ai-inference@v2
-        with:
-          max-completion-tokens: 1200
-          prompt: |
-            Based on the issue summary and file content snippets below, suggest which files could be altered to address the issue.
-            
-            ISSUE SUMMARY:
-            ${{ steps.inference.outputs.response }}
-            
-            FILE CONTENT SNIPPETS:
-            ${{ steps.file_context.outputs.file_context }}
-            
-            Analyze semantic relevance between the issue and the code content. Do not rely on filename similarity.
-            Suggest files that could be modified to address the issue. For each file, briefly explain:
-            1. The filename
-            2. Why it should be modified
-            3. What kind of changes might be needed
-            
-            Format your response as a numbered list with clear sections.
-
-            Rules:
-            - Only suggest files that are relevant to the issue summary.
-
-      - name: Comment with AI summary only
-        if: steps.check.outputs.should_run == 'true' && steps.check.outputs.include_files == 'false'
+      - name: Comment AI summary 
         run: |
           printf '## AI Summary\n\n%s\n' "$RESPONSE" > /tmp/comment_body.txt
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment_body.txt
@@ -127,14 +58,11 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           RESPONSE: ${{ steps.inference.outputs.response }}
 
-      - name: Comment with AI summary and file suggestions
-        if: steps.check.outputs.include_files == 'true'
-        run: |
-          printf '## AI Summary\n\n%s\n\n## Suggested Files to Modify\n\n%s\n' \
-            "$RESPONSE" "$FILE_SUGGESTIONS" > /tmp/comment_body.txt
-          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment_body.txt
+      - name: Remove summarize label after run
+        if: github.event_name == 'issues'
+        run: gh issue edit "$ISSUE_NUMBER" --remove-label "summarize"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          RESPONSE: ${{ steps.inference.outputs.response }}
-          FILE_SUGGESTIONS: ${{ steps.file_analysis.outputs.response }}
+
+      
