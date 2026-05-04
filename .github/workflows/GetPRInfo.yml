@@ -2,6 +2,7 @@
 name: Send PR info to Teams
 
 on:
+  # Run manually from the Actions tab.
   workflow_dispatch:
 
 jobs:
@@ -15,24 +16,29 @@ jobs:
     - name: Build and send PR report to Teams
       uses: actions/github-script@v7
       env:
+        # Incoming webhook URL stored securely in repository secrets.
         TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
       with:
         script: |
+          // Read webhook URL from environment and fail fast if missing.
           const webhook = process.env.TEAMS_WEBHOOK_URL;
           if (!webhook) {
             core.setFailed('Missing TEAMS_WEBHOOK_URL secret.');
             return;
           }
 
+          // Fetch open pull requests for the current repository.
           const { owner, repo } = context.repo;
-          const prs = await github.paginate(github.rest.pulls.list, {
+          const { data: prs } = await github.rest.pulls.list({
             owner,
             repo,
             state: 'open',
-            per_page: 100
+            per_page: 20
           });
 
-          const top = prs.slice(0, 20);
+          // Use a fixed-size list for predictable card length.
+          const top = prs;
+          // Start the Adaptive Card body with a title and summary line.
           const cardBody = [
             {
               type: 'TextBlock',
@@ -42,12 +48,13 @@ jobs:
             },
             {
               type: 'TextBlock',
-              text: `Open PR count: ${prs.length}`,
+              text: `Showing up to ${top.length} open PRs`,
               wrap: true,
               spacing: 'Small'
             }
           ];
 
+          // Add either an empty-state message or one line per PR.
           if (top.length === 0) {
             cardBody.push({
               type: 'TextBlock',
@@ -57,15 +64,24 @@ jobs:
             });
           } else {
             top.forEach((pr) => {
+              const createdDate = new Date(pr.created_at);
+              const createdDateText = createdDate.toISOString().split('T')[0];
+              const ageDays = Math.floor((Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+              const isOlderThan3Days = ageDays > 3;
+              const status = pr.draft ? 'Draft' : 'Open';
+              const ageLabel = isOlderThan3Days ? ' [OLDER THAN 3 DAYS]' : '';
+
               cardBody.push({
                 type: 'TextBlock',
-                text: `[#${pr.number}](${pr.html_url}) ${pr.title} - ${pr.user.login}`,
+                text: `[#${pr.number}](${pr.html_url}) ${pr.title} - ${pr.user.login} | Status: ${status} | Date: ${createdDateText}${ageLabel}`,
                 wrap: true,
-                spacing: 'Small'
+                spacing: 'Small',
+                color: isOlderThan3Days ? 'Attention' : 'Default'
               });
             });
           }
 
+          // Build the final Adaptive Card payload for Teams.
           const adaptiveCard = {
             type: 'AdaptiveCard',
             $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
@@ -73,6 +89,7 @@ jobs:
             body: cardBody
           };
 
+          // Send the card to Teams and surface any webhook errors.
           const response = await fetch(webhook, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
