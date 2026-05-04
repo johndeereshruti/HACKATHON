@@ -48,8 +48,7 @@ jobs:
             },
             {
               type: 'TextBlock',
-              text: `Showing up to ${top.length} open PRs`,
-              wrap: true,
+              text: `Total open PRs: ${prs.length}`,
               spacing: 'Small'
             }
           ];
