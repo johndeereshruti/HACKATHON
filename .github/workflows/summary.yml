@@ -1,39 +1,56 @@
+# Workflow: Summarize Issue
+# Triggered when a user posts a comment containing '/summarize' on an issue,
+# or when the 'summarize' label is applied to an issue.
+# Uses GitHub Models AI inference to generate a one-paragraph summary and
+# posts it back as a comment on the issue.
 name: Summarize issue
 
 on:
+  # Trigger on new issue comments (e.g. a user typing '/summarize')
   issue_comment:
     types: [created]
+  # Trigger when a label is applied to an issue
   issues:
     types: [labeled]
 
 jobs:
   summary:
     runs-on: ubuntu-latest
+    # Only run if the comment contains '/summarize', or the applied label is 'summarize'
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/summarize')) ||
       (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'summarize')
     permissions:
-      issues: write
-      models: read
-      contents: read
+      issues: write   # Needed to post a comment and edit labels on the issue
+      models: read    # Needed to call GitHub Models AI inference
+      contents: read  # Needed to check out the repository
     env:
+      # Ensure JavaScript actions use Node 24 runtime
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
+      # Check out the repository so the workflow has access to repo contents
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      # Retrieve all existing comments on the issue and store them as a
+      # multi-line output variable (one bullet point per comment body)
       - name: Fetch all issue comments
         id: fetch_comments
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
+          # Use the GitHub CLI to fetch comment bodies and prefix each with '- '
           COMMENTS=$(gh api repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments --jq '.[].body' | sed 's/^/- /')
+          # Write comments to GITHUB_OUTPUT using the multiline EOF delimiter
           echo "comments<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMENTS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Send the issue title, body, and comments to the AI model for summarization.
+      # The prompt instructs the model to ignore any instructions embedded in the
+      # issue/comment text (prompt injection mitigation).
       - name: Run AI inference
         id: inference
         uses: actions/ai-inference@v2
@@ -49,8 +66,11 @@ jobs:
             Comments:
             ${{ steps.fetch_comments.outputs.comments }}
 
+      # Post the AI-generated summary as a new comment on the issue.
+      # The response is written to a temp file first to avoid shell quoting issues.
       - name: Comment AI summary 
         run: |
+          # Build the comment body with a Markdown heading and the AI response
           printf '## AI Summary\n\n%s\n' "$RESPONSE" > /tmp/comment_body.txt
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment_body.txt
         env:
@@ -58,6 +78,9 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           RESPONSE: ${{ steps.inference.outputs.response }}
 
+      # Clean up: remove the 'summarize' label from the issue so the workflow
+      # does not re-trigger on the same label being re-applied later.
+      # Only runs when the workflow was triggered by a label event.
       - name: Remove summarize label after run
         if: github.event_name == 'issues'
         run: gh issue edit "$ISSUE_NUMBER" --remove-label "summarize"
